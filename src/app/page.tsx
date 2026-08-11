@@ -15,7 +15,7 @@ export default async function Home() {
   try {
     const db = createPublicClient();
     const [productResult, categoryResult] = await Promise.all([
-      db.from("products").select("id,category_id,name,slug,description,price_minor,currency,is_hit,is_new,product_images(storage_path,alt_text,sort_order)").eq("is_published", true).order("sort_order"),
+      db.from("products").select("id,category_id,name,slug,description,price_minor,currency,is_hit,is_new,product_images(storage_path,alt_text,sort_order)").eq("is_published", true).eq("is_available", true).order("sort_order"),
       db.from("categories").select("id,name,slug").eq("is_active", true).order("sort_order"),
     ]);
     if (productResult.error) throw productResult.error;
