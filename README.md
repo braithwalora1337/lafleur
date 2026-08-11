@@ -46,6 +46,7 @@ Admin calls send raw `window.Telegram.WebApp.initData` in `X-Telegram-Init-Data`
 
 - `GET /api/products?category=roses`
 - `POST /api/admin/session`
+- `POST /api/admin/uploads/product-image` (JPG/PNG/WebP, up to 8 MB)
 - `GET|POST /api/admin/{products|categories|orders|promo_codes|product_images}`
 - `PATCH|DELETE /api/admin/{resource}/{id}`
 
