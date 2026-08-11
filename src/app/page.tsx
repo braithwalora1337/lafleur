@@ -3,7 +3,7 @@ import Storefront, { type StorefrontProduct } from "./storefront";
 
 export const revalidate = 60;
 
-type ProductRow = Omit<StorefrontProduct, "image_url" | "image_alt"> & {
+type ProductRow = Omit<StorefrontProduct, "image_url" | "image_alt" | "images"> & {
   product_images: { storage_path: string; alt_text: string; sort_order: number }[];
 };
 
@@ -21,7 +21,8 @@ export default async function Home() {
     if (productResult.error) throw productResult.error;
     if (categoryResult.error) throw categoryResult.error;
     products = ((productResult.data ?? []) as ProductRow[]).map((product) => {
-      const image = [...(product.product_images ?? [])].sort((a, b) => a.sort_order - b.sort_order)[0];
+      const productImages = [...(product.product_images ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+      const image = productImages[0];
       return {
         id: product.id,
         category_id: product.category_id,
@@ -34,6 +35,10 @@ export default async function Home() {
         is_new: product.is_new,
         image_url: image ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/${image.storage_path}` : null,
         image_alt: image?.alt_text || product.name,
+        images: productImages.map((item) => ({
+          url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/product-images/${item.storage_path}`,
+          alt: item.alt_text || product.name,
+        })),
       };
     });
     categories = categoryResult.data ?? [];
