@@ -60,4 +60,16 @@ npm run lint
 npm run build
 ```
 
+## Cloudflare Workers
+
+The repository includes the official OpenNext adapter configuration for a full-stack Workers deployment.
+
+```bash
+npm run cf:build
+npm run cf:preview
+npm run cf:deploy
+```
+
+For Git-connected Workers Builds, use `npm run cf:build` as the build command and `npx wrangler deploy` as the deploy command. Add all five variables from `.env.example` under **Build variables and secrets**. Mark `SUPABASE_SECRET_KEY` and `TELEGRAM_BOT_TOKEN` as encrypted secrets; the two `NEXT_PUBLIC_` values must be available during the build as well as at runtime.
+
 No secrets belong in Git. `.env*` is ignored except the placeholder-only `.env.example`.
