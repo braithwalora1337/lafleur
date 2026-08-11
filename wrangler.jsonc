@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "lafleur",
+  "name": "lafleur-shop",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-08-11",
   "compatibility_flags": ["nodejs_compat"],
