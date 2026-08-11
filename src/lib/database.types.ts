@@ -1,0 +1,12 @@
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+export type OrderStatus = "new" | "accepted" | "in_progress" | "delivering" | "completed" | "cancelled";
+export type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
+type Table<Row, Insert = Partial<Row>, Update = Partial<Insert>> = { Row: Row; Insert: Insert; Update: Update; Relationships: [] };
+export type Category = { id:string; name:string; slug:string; sort_order:number; is_active:boolean; created_at:string; updated_at:string };
+export type Product = { id:string; category_id:string|null; name:string; slug:string; description:string; price_minor:number; old_price_minor:number|null; currency:string; is_available:boolean; is_hit:boolean; is_new:boolean; is_published:boolean; sort_order:number; created_at:string; updated_at:string };
+export type ProductImage = { id:string; product_id:string; storage_path:string; alt_text:string; sort_order:number; created_at:string };
+export type Admin = { id:string; telegram_user_id:number; display_name:string|null; role:string; is_active:boolean; created_at:string; updated_at:string };
+export type Order = { id:string; public_number:number; status:OrderStatus; payment_status:PaymentStatus; payment_provider:string|null; payment_external_id:string|null; customer_name:string; customer_phone:string; recipient_name:string|null; recipient_phone:string|null; delivery_address:string; delivery_at:string|null; is_anonymous:boolean; customer_comment:string; card_text:string; currency:string; subtotal_minor:number; delivery_price_minor:number; discount_minor:number; total_minor:number; promo_code:string|null; created_at:string; updated_at:string };
+export type OrderItem = { id:string; order_id:string; product_id:string|null; product_name:string; unit_price_minor:number; quantity:number; line_total_minor:number; created_at:string };
+export type PromoCode = { id:string; code:string; discount_percent:number; max_uses:number|null; uses_count:number; is_active:boolean; starts_at:string|null; ends_at:string|null; created_at:string; updated_at:string };
+export type Database = { public:{ Tables:{ categories:Table<Category>; products:Table<Product>; product_images:Table<ProductImage>; admins:Table<Admin>; orders:Table<Order>; order_items:Table<OrderItem>; promo_codes:Table<PromoCode> }; Views:Record<string,never>; Functions:Record<string,never>; Enums:{order_status:OrderStatus;payment_status:PaymentStatus}; CompositeTypes:Record<string,never> } };
