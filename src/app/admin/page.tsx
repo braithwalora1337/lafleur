@@ -1,1 +1,1 @@
-import Script from "next/script";import AdminShell from "./shell";export const metadata={title:"LaFleur Admin"};export default function Admin(){return <><Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive"/><AdminShell/></>}
+import AdminShell from "./shell";export const metadata={title:"LaFleur Admin"};export default function Admin(){return <AdminShell/>}
