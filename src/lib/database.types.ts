@@ -1,5 +1,5 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
-export type OrderStatus = "new" | "accepted" | "in_progress" | "delivering" | "completed" | "cancelled";
+export type OrderStatus = "new" | "accepted" | "in_progress" | "assembled" | "ready_for_pickup" | "ready_for_delivery" | "delivering" | "completed" | "cancelled";
 export type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
 type Table<Row, Insert = Partial<Row>, Update = Partial<Insert>> = { Row: Row; Insert: Insert; Update: Update; Relationships: [] };
 export type Category = { id:string; name:string; slug:string; sort_order:number; is_active:boolean; created_at:string; updated_at:string };
