@@ -20,7 +20,7 @@ export default async function Home() {
     ]);
     if (productResult.error) throw productResult.error;
     if (categoryResult.error) throw categoryResult.error;
-    products = ((productResult.data ?? []) as ProductRow[]).map((product) => {
+    products = ((productResult.data ?? []) as unknown as ProductRow[]).map((product) => {
       const productImages = [...(product.product_images ?? [])].sort((a, b) => a.sort_order - b.sort_order);
       const image = productImages[0];
       return {

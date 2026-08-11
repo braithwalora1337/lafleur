@@ -1,0 +1,1 @@
+export default function DiscountPage() { return <section className="profile-section"><span className="eyebrow">Программа лояльности</span><h2>Моя скидка</h2><p>Персональная скидка будет расти вместе с вашими заказами.</p><div className="profile-value">0<span>%</span></div><small>Начальный уровень</small></section>; }

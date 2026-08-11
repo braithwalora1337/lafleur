@@ -1,0 +1,1 @@
+export default function PromosPage() { return <section className="profile-section"><span className="eyebrow">Персональные предложения</span><h2>Мои промокоды</h2><p>Подарки и специальные предложения будут храниться на этой странице.</p><div className="profile-empty">Активных промокодов пока нет</div></section>; }

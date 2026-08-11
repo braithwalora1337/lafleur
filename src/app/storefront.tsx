@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import type { User } from "@supabase/supabase-js";
+import { createAuthClient } from "@/lib/supabase/auth-client";
 
 export type StorefrontProduct = {
   id: string;
@@ -52,6 +54,7 @@ function ProductGallery({ product, tone }: { product: StorefrontProduct; tone: n
 
 export default function Storefront({ products, categories, warning }: { products: StorefrontProduct[]; categories: { id: string; name: string; slug: string }[]; warning: string }) {
   const catalogRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkout, setCheckout] = useState<Checkout>(initialCheckout);
@@ -59,6 +62,8 @@ export default function Storefront({ products, categories, warning }: { products
   const [orderNumber, setOrderNumber] = useState<number | null>(null);
   const [checkoutError, setCheckoutError] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
+  const [user, setUser] = useState<User | null>(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const totalQuantity = cart.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.price_minor * item.quantity, 0), [cart]);
   const visibleProducts = activeCategory === "all" ? products : products.filter((product) => product.category_id === activeCategory);
@@ -69,6 +74,43 @@ export default function Storefront({ products, categories, warning }: { products
     elements.forEach((element) => { element.classList.add("lux-reveal"); observer.observe(element); });
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) setProfileMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setProfileMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [profileMenuOpen]);
+
+  useEffect(() => {
+    const db = createAuthClient();
+    void db.auth.getUser().then(({ data }) => setUser(data.user));
+    const { data: authListener } = db.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
+    return () => {
+      authListener.subscription.unsubscribe();
+      void db.auth.dispose();
+    };
+  }, []);
+
+  const profileName = user
+    ? String(user.user_metadata?.name || user.email?.split("@")[0] || "Профиль")
+    : "";
+
+  async function signOut() {
+    const db = createAuthClient();
+    await db.auth.signOut();
+    setProfileMenuOpen(false);
+    setUser(null);
+  }
 
   function addToCart(product: StorefrontProduct) {
     setCart((items) => {
@@ -95,9 +137,15 @@ export default function Storefront({ products, categories, warning }: { products
     setSubmitting(true);
     setCheckoutError("");
     try {
+      let accessToken = "";
+      if (user) {
+        const authDb = createAuthClient();
+        accessToken = (await authDb.auth.getSession()).data.session?.access_token ?? "";
+        await authDb.auth.dispose();
+      }
       const response = await fetch("/api/orders", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) },
         body: JSON.stringify({ ...checkout, items: cart.map(({ id, quantity }) => ({ productId: id, quantity })) }),
       });
       const result = await response.json() as { data?: { publicNumber: number }; error?: string };
@@ -117,7 +165,7 @@ export default function Storefront({ products, categories, warning }: { products
   }
 
   return <>
-    <header className="site-header"><div className="wrap nav"><a className="brand" href="#top">LA<span>FLEUR</span></a><nav className="navlinks"><a href="#catalog">Букеты</a><a href="#service">Сервис</a><a href="#delivery">Доставка</a></nav><button className="nav-order" onClick={() => setCartOpen(true)}>Корзина <span>{totalQuantity || ""}</span></button></div></header>
+    <header className="site-header"><div className="wrap nav"><a className="brand" href="#top">LA<span>FLEUR</span></a><nav className="navlinks"><a href="#catalog">Букеты</a><a href="#service">Сервис</a><a href="#delivery">Доставка</a></nav><div className="nav-actions">{user ? <div className="profile-menu-wrap" ref={profileMenuRef}><button className="nav-profile" type="button" aria-expanded={profileMenuOpen} aria-haspopup="menu" onClick={() => setProfileMenuOpen((open) => !open)}><span>{profileName.slice(0, 1).toUpperCase()}</span><b>{profileName}</b><i>⌄</i></button>{profileMenuOpen && <div className="profile-menu" role="menu"><div className="profile-menu-head"><span>{profileName.slice(0, 1).toUpperCase()}</span><div><strong>{profileName}</strong><small>{user.email}</small></div></div><div className="profile-menu-links"><a href="/profile#orders" role="menuitem"><span>□</span><div><b>Мои заказы</b><small>История и статусы</small></div><i>›</i></a><a href="/profile#discount" role="menuitem"><span>％</span><div><b>Моя скидка</b><small>Уровень привилегий</small></div><i>›</i></a><a href="/profile#promos" role="menuitem"><span>◇</span><div><b>Мои промокоды</b><small>Доступные предложения</small></div><i>›</i></a></div><button className="profile-logout" role="menuitem" type="button" onClick={() => void signOut()}><span>↪</span>Выйти из аккаунта</button></div>}</div> : <a className="nav-login" href="/auth/login">Войти</a>}<button className="nav-order" onClick={() => setCartOpen(true)}>Корзина <span>{totalQuantity || ""}</span></button></div></div></header>
     <main id="top">
       <section className="wrap hero">
         <Image className="hero-photo" src="/images/lafleur-hero-luxury-v2.png" alt="Бордовые и молочные розы на льняной ткани" fill priority quality={95} sizes="100vw" />
