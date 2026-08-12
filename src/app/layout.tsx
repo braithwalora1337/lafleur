@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "LaFleur — цветы с характером",
-  description: "Авторские букеты и свежие цветы с доставкой по Екатеринбургу.",
+  description: "Авторские букеты и свежие цветы с доставкой по Режу.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
