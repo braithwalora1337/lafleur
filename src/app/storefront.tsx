@@ -21,8 +21,9 @@ export type StorefrontProduct = {
 };
 
 type CartItem = StorefrontProduct & { quantity: number };
-type Checkout = { name: string; phone: string; fulfillment: "delivery" | "pickup"; address: string; deliveryAt: string; comment: string };
-const initialCheckout: Checkout = { name: "", phone: "", fulfillment: "delivery", address: "", deliveryAt: "", comment: "" };
+type Checkout = { name: string; phone: string; fulfillment: "delivery" | "pickup"; address: string; deliveryAt: string; comment: string; promoCode: string };
+type AppliedPromo = { code: string; discountPercent: number; discountMinor: number; totalMinor: number };
+const initialCheckout: Checkout = { name: "", phone: "", fulfillment: "delivery", address: "", deliveryAt: "", comment: "", promoCode: "" };
 const money = (value: number, currency = "RUB") => new Intl.NumberFormat("ru-RU", { style: "currency", currency, maximumFractionDigits: 0 }).format(value / 100);
 
 function DockIcon({ name }: { name: "home" | "catalog" | "delivery" | "cart" }) {
@@ -67,6 +68,8 @@ export default function Storefront({ products, categories, warning }: { products
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState<number | null>(null);
   const [checkoutError, setCheckoutError] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<AppliedPromo | null>(null);
+  const [promoBusy, setPromoBusy] = useState(false);
   const [activeCategory, setActiveCategory] = useState("all");
   const [user, setUser] = useState<User | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -74,6 +77,7 @@ export default function Storefront({ products, categories, warning }: { products
   const [catalogProgress, setCatalogProgress] = useState(0);
   const totalQuantity = cart.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.price_minor * item.quantity, 0), [cart]);
+  const checkoutTotal = appliedPromo?.totalMinor ?? subtotal;
   const visibleProducts = activeCategory === "all" ? products : products.filter((product) => product.category_id === activeCategory);
 
   useEffect(() => {
@@ -121,6 +125,7 @@ export default function Storefront({ products, categories, warning }: { products
   }
 
   function addToCart(product: StorefrontProduct) {
+    setAppliedPromo(null);
     setCart((items) => {
       const existing = items.find((item) => item.id === product.id);
       return existing ? items.map((item) => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item) : [...items, { ...product, quantity: 1 }];
@@ -129,6 +134,7 @@ export default function Storefront({ products, categories, warning }: { products
   }
 
   function setQuantity(id: string, quantity: number) {
+    setAppliedPromo(null);
     setCart((items) => quantity < 1 ? items.filter((item) => item.id !== id) : items.map((item) => item.id === id ? { ...item, quantity } : item));
   }
 
@@ -209,15 +215,31 @@ export default function Storefront({ products, categories, warning }: { products
         headers: { "content-type": "application/json", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) },
         body: JSON.stringify({ ...checkout, items: cart.map(({ id, quantity }) => ({ productId: id, quantity })) }),
       });
-      const result = await response.json() as { data?: { publicNumber: number }; error?: string };
+      const result = await response.json() as { data?: { publicNumber: number; discountMinor: number; totalMinor: number }; error?: string };
       if (!response.ok || !result.data) throw new Error(result.error || "Не удалось оформить заказ");
       setOrderNumber(result.data.publicNumber);
       setCart([]);
+      setAppliedPromo(null);
     } catch (error) {
       setCheckoutError(error instanceof Error ? error.message : "Не удалось оформить заказ");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function applyPromo() {
+    const code = checkout.promoCode.trim().toUpperCase();
+    if (!code) { setAppliedPromo(null); return; }
+    setPromoBusy(true); setCheckoutError("");
+    try {
+      let accessToken = "";
+      if (user) { const authDb = createAuthClient(); accessToken = (await authDb.auth.getSession()).data.session?.access_token ?? ""; await authDb.auth.dispose(); }
+      const response = await fetch("/api/promos/validate", { method: "POST", headers: { "content-type": "application/json", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) }, body: JSON.stringify({ code, subtotalMinor: subtotal }) });
+      const result = await response.json() as { data?: AppliedPromo; error?: string };
+      if (!response.ok || !result.data) throw new Error(result.error || "Промокод не применён");
+      setCheckout((value) => ({ ...value, promoCode: result.data!.code })); setAppliedPromo(result.data);
+    } catch (error) { setAppliedPromo(null); setCheckoutError(error instanceof Error ? error.message : "Промокод не применён"); }
+    finally { setPromoBusy(false); }
   }
 
   function closeCart() {
@@ -243,6 +265,6 @@ export default function Storefront({ products, categories, warning }: { products
     <footer className="footer"><div className="wrap footer-inner"><div className="footer-brand"><a className="brand" href="#top">LA<span>FLEUR</span></a><p>Цветочная мастерская в Реже</p></div><div className="footer-contacts"><a href="tel:+79122978416"><small>Позвонить</small><strong>+7 912 297-84-16</strong></a><div><a href="https://wa.me/79122978416" target="_blank" rel="noreferrer" aria-label="Написать в WhatsApp"><ContactIcon name="whatsapp" /><span>WhatsApp</span></a><a href="https://t.me/o17l701" target="_blank" rel="noreferrer" aria-label="Написать в Telegram пользователю o17l701"><ContactIcon name="telegram" /><span>Telegram</span></a></div></div><small>© {new Date().getFullYear()} LaFleur</small></div></footer>
     <nav className="mobile-dock" aria-label="Навигация по магазину"><a href="#top"><span><DockIcon name="home" /></span><small>Главная</small></a><a href="#catalog"><span><DockIcon name="catalog" /></span><small>Каталог</small></a><a href="/delivery"><span><DockIcon name="delivery" /></span><small>Доставка</small></a><button onClick={() => setCartOpen(true)}><span className="dock-cart"><DockIcon name="cart" />{totalQuantity > 0 && <b>{totalQuantity}</b>}</span><small>Корзина</small></button></nav>
 
-    {cartOpen && <div className="cart-layer" role="dialog" aria-modal="true" aria-label="Корзина"><button className="cart-backdrop" onClick={closeCart} aria-label="Закрыть корзину" /><aside className="cart-drawer"><div className="cart-head"><div><span className="eyebrow">LaFleur</span><h2>{orderNumber ? "Заказ оформлен" : "Ваша корзина"}</h2></div><button className="cart-close" onClick={closeCart}>×</button></div>{orderNumber ? <div className="order-success"><div className="success-mark">✓</div><h3>Спасибо за заказ №{orderNumber}</h3><p>Мы скоро позвоним по указанному номеру, чтобы подтвердить состав, стоимость доставки и время.</p><button className="button" onClick={closeCart}>Вернуться в магазин</button></div> : <>{cart.length ? <><div className="cart-items">{cart.map((item) => <div className="cart-item" key={item.id}>{item.image_url ? <Image src={item.image_url} alt="" width={72} height={82} /> : <div className="cart-thumb">✤</div>}<div className="cart-item-copy"><strong>{item.name}</strong><small>{money(item.price_minor, item.currency)}</small><div className="quantity"><button onClick={() => setQuantity(item.id, item.quantity - 1)}>−</button><span>{item.quantity}</span><button onClick={() => setQuantity(item.id, item.quantity + 1)}>＋</button></div></div></div>)}</div><div className="cart-total"><span>Итого без доставки</span><strong>{money(subtotal)}</strong></div><form className="checkout-form" onSubmit={submitOrder}><h3>Оформление заказа</h3><label>Ваше имя<input required maxLength={80} autoComplete="name" value={checkout.name} onChange={(e) => setCheckout({ ...checkout, name: e.target.value })} placeholder="Анна" /></label><label>Телефон<input required maxLength={30} autoComplete="tel" inputMode="tel" value={checkout.phone} onChange={(e) => setCheckout({ ...checkout, phone: e.target.value })} placeholder="+7 999 000-00-00" /></label><fieldset><legend>Как получить заказ?</legend><label className="radio"><input type="radio" name="fulfillment" checked={checkout.fulfillment === "delivery"} onChange={() => setCheckout({ ...checkout, fulfillment: "delivery" })} /> Доставка</label><label className="radio"><input type="radio" name="fulfillment" checked={checkout.fulfillment === "pickup"} onChange={() => setCheckout({ ...checkout, fulfillment: "pickup", address: "" })} /> Самовывоз</label></fieldset>{checkout.fulfillment === "delivery" && <label>Адрес доставки<input required maxLength={240} value={checkout.address} onChange={(e) => setCheckout({ ...checkout, address: e.target.value })} placeholder="Улица, дом, квартира" /></label>}<label>К какому времени<input required type="datetime-local" value={checkout.deliveryAt} onChange={(e) => setCheckout({ ...checkout, deliveryAt: e.target.value })} /></label><label>Комментарий<textarea maxLength={500} rows={3} value={checkout.comment} onChange={(e) => setCheckout({ ...checkout, comment: e.target.value })} placeholder="Пожелания к заказу" /></label><div className="call-note"><span>☎</span><p><strong>После оформления мы позвоним</strong><br />Уточним детали, доставку и подтвердим итоговую стоимость.</p></div>{checkoutError && <p className="checkout-error">{checkoutError}</p>}<button className="button checkout-button" disabled={submitting}>{submitting ? "Оформляем…" : "Оформить заказ"}</button></form></> : <div className="empty-cart"><span>✤</span><h3>Корзина пока пуста</h3><p>Добавьте понравившийся букет из каталога.</p><button className="button" onClick={() => { setCartOpen(false); document.getElementById("catalog")?.scrollIntoView(); }}>Выбрать букет</button></div>}</>}</aside></div>}
+    {cartOpen && <div className="cart-layer" role="dialog" aria-modal="true" aria-label="Корзина"><button className="cart-backdrop" onClick={closeCart} aria-label="Закрыть корзину" /><aside className="cart-drawer"><div className="cart-head"><div><span className="eyebrow">LaFleur</span><h2>{orderNumber ? "Заказ оформлен" : "Ваша корзина"}</h2></div><button className="cart-close" onClick={closeCart}>×</button></div>{orderNumber ? <div className="order-success"><div className="success-mark">✓</div><h3>Спасибо за заказ №{orderNumber}</h3><p>Мы скоро позвоним по указанному номеру, чтобы подтвердить состав, стоимость доставки и время.</p><button className="button" onClick={closeCart}>Вернуться в магазин</button></div> : <>{cart.length ? <><div className="cart-items">{cart.map((item) => <div className="cart-item" key={item.id}>{item.image_url ? <Image src={item.image_url} alt="" width={72} height={82} /> : <div className="cart-thumb">✤</div>}<div className="cart-item-copy"><strong>{item.name}</strong><small>{money(item.price_minor, item.currency)}</small><div className="quantity"><button onClick={() => setQuantity(item.id, item.quantity - 1)}>−</button><span>{item.quantity}</span><button onClick={() => setQuantity(item.id, item.quantity + 1)}>＋</button></div></div></div>)}</div><div className="cart-total cart-summary"><span>Товары</span><strong>{money(subtotal)}</strong>{appliedPromo && <><span className="promo-discount">Скидка {appliedPromo.discountPercent}%</span><strong className="promo-discount">−{money(appliedPromo.discountMinor)}</strong><span className="grand">Итого без доставки</span><strong className="grand">{money(checkoutTotal)}</strong></>}</div><form className="checkout-form" onSubmit={submitOrder}><h3>Оформление заказа</h3><label>Ваше имя<input required maxLength={80} autoComplete="name" value={checkout.name} onChange={(e) => setCheckout({ ...checkout, name: e.target.value })} placeholder="Анна" /></label><label>Телефон<input required maxLength={30} autoComplete="tel" inputMode="tel" value={checkout.phone} onChange={(e) => setCheckout({ ...checkout, phone: e.target.value })} placeholder="+7 999 000-00-00" /></label><fieldset><legend>Как получить заказ?</legend><label className="radio"><input type="radio" name="fulfillment" checked={checkout.fulfillment === "delivery"} onChange={() => setCheckout({ ...checkout, fulfillment: "delivery" })} /> Доставка</label><label className="radio"><input type="radio" name="fulfillment" checked={checkout.fulfillment === "pickup"} onChange={() => setCheckout({ ...checkout, fulfillment: "pickup", address: "" })} /> Самовывоз</label></fieldset>{checkout.fulfillment === "delivery" && <label>Адрес доставки<input required maxLength={240} value={checkout.address} onChange={(e) => setCheckout({ ...checkout, address: e.target.value })} placeholder="Улица, дом, квартира" /></label>}<label>К какому времени<input required type="datetime-local" value={checkout.deliveryAt} onChange={(e) => setCheckout({ ...checkout, deliveryAt: e.target.value })} /></label><div className="checkout-promo"><label>Промокод<input maxLength={40} value={checkout.promoCode} onChange={(event) => { setCheckout({ ...checkout, promoCode: event.target.value.toUpperCase() }); setAppliedPromo(null); }} placeholder="Например, LF10-ABC123" /></label><button type="button" disabled={promoBusy || !checkout.promoCode.trim()} onClick={() => void applyPromo()}>{promoBusy ? "Проверяем…" : appliedPromo ? "Применён ✓" : "Применить"}</button>{appliedPromo && <small>Скидка {appliedPromo.discountPercent}% активирована</small>}</div><label>Комментарий<textarea maxLength={500} rows={3} value={checkout.comment} onChange={(e) => setCheckout({ ...checkout, comment: e.target.value })} placeholder="Пожелания к заказу" /></label><div className="call-note"><span>☎</span><p><strong>После оформления мы позвоним</strong><br />Уточним детали, доставку и подтвердим итоговую стоимость.</p></div>{checkoutError && <p className="checkout-error">{checkoutError}</p>}<button className="button checkout-button" disabled={submitting}>{submitting ? "Оформляем…" : "Оформить заказ"}</button></form></> : <div className="empty-cart"><span>✤</span><h3>Корзина пока пуста</h3><p>Добавьте понравившийся букет из каталога.</p><button className="button" onClick={() => { setCartOpen(false); document.getElementById("catalog")?.scrollIntoView(); }}>Выбрать букет</button></div>}</>}</aside></div>}
   </>;
 }

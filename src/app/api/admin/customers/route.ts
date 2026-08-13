@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin-auth";
 
-const promoSchema = z.object({ userId: z.string().uuid(), discountPercent: z.number().int().min(1).max(50) });
+const promoSchema = z.object({ userId: z.string().uuid(), discountPercent: z.number().int().min(1).max(50), duration: z.enum(["day", "week", "month", "unlimited"]) });
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,7 +24,8 @@ export async function POST(request: NextRequest) {
     const input = promoSchema.parse(await request.json());
     const suffix = input.userId.replace(/-/g, "").slice(0, 6).toUpperCase();
     const code = `LF${input.discountPercent}-${suffix}`;
-    const { data, error } = await db.from("promo_codes").upsert({ code, discount_percent: input.discountPercent, max_uses: 1, uses_count: 0, is_active: true }, { onConflict: "code" }).select().single();
+    const endsAt = input.duration === "unlimited" ? null : new Date(Date.now() + ({ day: 1, week: 7, month: 30 }[input.duration]) * 86_400_000).toISOString();
+    const { data, error } = await db.from("promo_codes").upsert({ user_id: input.userId, code, discount_percent: input.discountPercent, max_uses: 1, uses_count: 0, is_active: true, starts_at: new Date().toISOString(), ends_at: endsAt }, { onConflict: "code" }).select().single();
     if (error) throw error;
     return NextResponse.json({ data });
   } catch (error) {
