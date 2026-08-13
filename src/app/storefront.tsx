@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createAuthClient } from "@/lib/supabase/auth-client";
 
@@ -59,6 +59,7 @@ function ProductGallery({ product, tone }: { product: StorefrontProduct; tone: n
 
 export default function Storefront({ products, categories, warning }: { products: StorefrontProduct[]; categories: { id: string; name: string; slug: string }[]; warning: string }) {
   const catalogRef = useRef<HTMLDivElement>(null);
+  const catalogDragRef = useRef({ active: false, startX: 0, scrollLeft: 0, moved: false });
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -69,6 +70,8 @@ export default function Storefront({ products, categories, warning }: { products
   const [activeCategory, setActiveCategory] = useState("all");
   const [user, setUser] = useState<User | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [catalogDragging, setCatalogDragging] = useState(false);
+  const [catalogProgress, setCatalogProgress] = useState(0);
   const totalQuantity = cart.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.price_minor * item.quantity, 0), [cart]);
   const visibleProducts = activeCategory === "all" ? products : products.filter((product) => product.category_id === activeCategory);
@@ -136,6 +139,59 @@ export default function Storefront({ products, categories, warning }: { products
     catalog.scrollBy({ left: direction * ((card?.offsetWidth ?? 340) + 18), behavior: "smooth" });
   }
 
+  function syncCatalogProgress() {
+    const catalog = catalogRef.current;
+    if (!catalog) return;
+    const maximum = catalog.scrollWidth - catalog.clientWidth;
+    setCatalogProgress(maximum > 0 ? Math.round((catalog.scrollLeft / maximum) * 1000) / 10 : 0);
+  }
+
+  function seekCatalog(progress: number) {
+    const catalog = catalogRef.current;
+    if (!catalog) return;
+    const maximum = catalog.scrollWidth - catalog.clientWidth;
+    catalog.scrollTo({ left: maximum * (progress / 100), behavior: "smooth" });
+    setCatalogProgress(progress);
+  }
+
+  function wheelCatalog(event: ReactWheelEvent<HTMLDivElement>) {
+    const catalog = catalogRef.current;
+    if (!catalog || window.matchMedia("(max-width: 800px)").matches || catalog.scrollWidth <= catalog.clientWidth) return;
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (!delta) return;
+    const atStart = catalog.scrollLeft <= 1 && delta < 0;
+    const atEnd = catalog.scrollLeft + catalog.clientWidth >= catalog.scrollWidth - 2 && delta > 0;
+    if (atStart || atEnd) return;
+    event.preventDefault();
+    catalog.scrollBy({ left: delta * 0.7, behavior: "smooth" });
+  }
+
+  function startCatalogDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== "mouse" || (event.target as HTMLElement).closest("button,a,input")) return;
+    const catalog = catalogRef.current;
+    if (!catalog) return;
+    catalogDragRef.current = { active: true, startX: event.clientX, scrollLeft: catalog.scrollLeft, moved: false };
+    catalog.setPointerCapture(event.pointerId);
+    setCatalogDragging(true);
+  }
+
+  function moveCatalogDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const catalog = catalogRef.current;
+    const drag = catalogDragRef.current;
+    if (!catalog || !drag.active) return;
+    const distance = event.clientX - drag.startX;
+    if (Math.abs(distance) > 4) drag.moved = true;
+    catalog.scrollLeft = drag.scrollLeft - distance;
+  }
+
+  function stopCatalogDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const catalog = catalogRef.current;
+    if (!catalogDragRef.current.active) return;
+    catalogDragRef.current.active = false;
+    if (catalog?.hasPointerCapture(event.pointerId)) catalog.releasePointerCapture(event.pointerId);
+    setCatalogDragging(false);
+  }
+
   async function submitOrder(event: FormEvent) {
     event.preventDefault();
     if (!cart.length) return;
@@ -180,7 +236,7 @@ export default function Storefront({ products, categories, warning }: { products
         <div className="hero-note">Доставим сегодня<br />при заказе до 18:00</div>
       </section>
       <section className="promise-strip"><div className="wrap promise-grid"><div><span>01</span><strong>Свежие цветы</strong><small>Ежедневные поставки</small></div><div><span>02</span><strong>Фото перед доставкой</strong><small>Вы увидите готовый букет</small></div><div><span>03</span><strong>Бережная доставка</strong><small>Точно к нужному времени</small></div></div></section>
-      <section className="wrap section catalog-section" id="catalog"><div className="section-heading"><div><span className="eyebrow">Коллекция LaFleur</span><h2>Найдите свой букет</h2></div><p>Каждый букет собирается флористом вручную. Возможны лёгкие изменения состава с сохранением настроения и палитры.</p></div><div className="mobile-section-guide"><span>1</span><p><strong>Выберите категорию</strong><small>Затем листайте букеты в сторону</small></p><b>→</b></div><div className="catalog-toolbar"><div className="categories"><button className={`chip ${activeCategory === "all" ? "active" : ""}`} onClick={() => setActiveCategory("all")}>Все букеты</button>{categories.map((category) => <button className={`chip ${activeCategory === category.id ? "active" : ""}`} onClick={() => setActiveCategory(category.id)} key={category.id}>{category.name}</button>)}</div><div className="catalog-arrows"><button onClick={() => scrollCatalog(-1)} aria-label="Предыдущие букеты">←</button><button onClick={() => scrollCatalog(1)} aria-label="Следующие букеты">→</button></div></div>{warning && <p className="status">{warning}</p>}<div className="grid product-grid" ref={catalogRef}>{visibleProducts.map((product, index) => <article className="card" key={product.id}><ProductGallery product={product} tone={(index % 4) + 1} /><div className="cardbody"><div><h3>{product.name}</h3><p>{product.description || "Нежная композиция от флористов LaFleur"}</p></div><div className="card-bottom"><strong className="price">{money(product.price_minor, product.currency)}</strong><button className="add-to-cart" onClick={() => addToCart(product)} aria-label={`Добавить ${product.name} в корзину`}><span aria-hidden="true">＋</span><b>В корзину</b></button></div></div></article>)}</div>{!warning && visibleProducts.length === 0 && <div className="catalog-empty">В этой категории скоро появятся букеты.</div>}</section>
+      <section className="wrap section catalog-section" id="catalog"><div className="section-heading"><div><span className="eyebrow">Коллекция LaFleur</span><h2>Найдите свой букет</h2></div><p>Каждый букет собирается флористом вручную. Возможны лёгкие изменения состава с сохранением настроения и палитры.</p></div><div className="mobile-section-guide"><span>1</span><p><strong>Выберите категорию</strong><small>Затем листайте букеты в сторону</small></p><b>→</b></div><div className="catalog-toolbar"><div className="categories"><button className={`chip ${activeCategory === "all" ? "active" : ""}`} onClick={() => setActiveCategory("all")}>Все букеты</button>{categories.map((category) => <button className={`chip ${activeCategory === category.id ? "active" : ""}`} onClick={() => setActiveCategory(category.id)} key={category.id}>{category.name}</button>)}</div><div className="catalog-arrows"><button onClick={() => scrollCatalog(-1)} aria-label="Предыдущие букеты">←</button><button onClick={() => scrollCatalog(1)} aria-label="Следующие букеты">→</button></div></div>{warning && <p className="status">{warning}</p>}<div className={`grid product-grid ${catalogDragging ? "is-dragging" : ""}`} ref={catalogRef} onScroll={syncCatalogProgress} onWheel={wheelCatalog} onPointerDown={startCatalogDrag} onPointerMove={moveCatalogDrag} onPointerUp={stopCatalogDrag} onPointerCancel={stopCatalogDrag} onDragStart={(event) => event.preventDefault()}>{visibleProducts.map((product, index) => <article className="card" key={product.id}><ProductGallery product={product} tone={(index % 4) + 1} /><div className="cardbody"><div><h3>{product.name}</h3><p>{product.description || "Нежная композиция от флористов LaFleur"}</p></div><div className="card-bottom"><strong className="price">{money(product.price_minor, product.currency)}</strong><button className="add-to-cart" onClick={() => addToCart(product)} aria-label={`Добавить ${product.name} в корзину`}><span aria-hidden="true">＋</span><b>В корзину</b></button></div></div></article>)}</div><div className="catalog-progress"><div className="catalog-progress-label"><span>Листайте каталог</span><small>{Math.round(catalogProgress)}%</small></div><input type="range" min="0" max="100" step="0.1" value={catalogProgress} onChange={(event) => seekCatalog(Number(event.target.value))} aria-label="Положение в каталоге" style={{ "--catalog-progress": `${catalogProgress}%` } as CSSProperties} /></div>{!warning && visibleProducts.length === 0 && <div className="catalog-empty">В этой категории скоро появятся букеты.</div>}</section>
       <section className="wrap story" id="service"><div className="story-art"><Image src="/images/lafleur-studio-roses.png" alt="Розы на столе флориста" fill sizes="(max-width: 650px) 100vw, 50vw" /></div><div className="story-copy"><span className="eyebrow">Особенный подход</span><h2>Красота — в заботе о деталях</h2><p>Подберём цветы под повод, характер и настроение. Подпишем открытку, согласуем время и пришлём фотографию букета перед отправкой.</p><blockquote>«Мы создаём не просто букеты, а маленькие воспоминания»</blockquote></div></section>
       <section className="delivery" id="delivery"><div className="wrap delivery-inner"><div><span className="eyebrow">Доставка и забота</span><h2>Ваши чувства<br />приедут вовремя</h2></div><div className="delivery-copy"><p>Доставляем по Режу и ближайшим районам. При заказе от 5 000 ₽ доставка бесплатная. Перед отправкой бережно упакуем букет и согласуем детали.</p><a className="button light" href="/delivery">Условия доставки</a></div></div></section>
     </main>
